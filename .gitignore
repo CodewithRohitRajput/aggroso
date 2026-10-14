@@ -1,0 +1,9 @@
+node_modules
+.next
+out
+.vercel
+.env
+.env.local
+data/triage-reports.json
+*.tsbuildinfo
+*.log
