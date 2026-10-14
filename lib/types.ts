@@ -60,5 +60,4 @@ export interface TriageReport {
 export interface HealthResponse {
   status: string;
   ai: { provider: AssessmentProvider; model?: string };
-  storage: "redis" | "file" | "temporary";
 }

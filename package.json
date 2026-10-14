@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/triage.test.ts tests/gemini.test.ts tests/api.test.ts"
+    "test": "tsx --test tests/triage.test.ts tests/gemini.test.ts tests/api.test.ts tests/reports.test.ts"
   },
   "engines": {
     "node": ">=18.18"

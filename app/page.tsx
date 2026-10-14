@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { applyReview, loadReports, saveReports } from "@/lib/reports";
 import { allowedTransitions, equipmentTypes, HealthResponse, reportStatuses, ReviewStatus, Severity, TriageInput, TriageReport } from "@/lib/types";
 
 const initialForm: TriageInput = {
@@ -64,11 +65,8 @@ export default function Home() {
   const [health, setHealth] = useState<HealthResponse | "offline" | null>(null);
 
   useEffect(() => {
-    fetch("/api/triage").then(async (response) => {
-      const data = await response.json();
-      if (response.ok) setReports(data.reports);
-      else setMessage({ type: "error", text: data.error });
-    }).catch(() => setMessage({ type: "error", text: "Could not connect to the triage service. Please refresh and try again." })).finally(() => setLoading(false));
+    setReports(loadReports());
+    setLoading(false);
     fetch("/api/health").then((response) => response.ok ? response.json() : null).then((data) => setHealth(data ?? "offline")).catch(() => setHealth("offline"));
   }, []);
 
@@ -91,6 +89,11 @@ export default function Home() {
   }, [reports, severityFilter, statusFilter, search]);
   const visibleReports = showAll ? filteredReports : filteredReports.slice(0, pageSize);
 
+  function commit(next: TriageReport[]) {
+    setReports(next);
+    if (!saveReports(next)) setMessage({ type: "warning", text: "This browser blocked saving, so reports will be lost when you leave the page." });
+  }
+
   function updateField(field: keyof TriageInput, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
     setFieldErrors((current) => ({ ...current, [field]: undefined }));
@@ -109,7 +112,7 @@ export default function Home() {
         throw new Error(data.error || "Unable to submit report.");
       }
       const report: TriageReport = data.report;
-      setReports((current) => [report, ...current]);
+      commit([report, ...reports]);
       setSelected(report);
       setForm(initialForm);
       setMessage(report.providerNote
@@ -124,16 +127,15 @@ export default function Home() {
 
   async function review(status: ReviewStatus, reviewer: string, note: string) {
     if (!selected) return false;
-    const response = await fetch(`/api/triage/${encodeURIComponent(selected.id)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status, reviewer, note: note || undefined }) });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage({ type: "error", text: data.error });
+    const result = applyReview(selected, status, reviewer, note);
+    if (!result.ok) {
+      setMessage({ type: "error", text: result.error });
       return false;
     }
     storeReviewer(reviewer);
-    setReports((current) => current.map((report) => report.id === data.report.id ? data.report : report));
-    setSelected(data.report);
-    setMessage({ type: "success", text: `Report ${data.report.id} marked ${status.toLowerCase()}.` });
+    commit(reports.map((report) => report.id === result.report.id ? result.report : report));
+    setSelected(result.report);
+    setMessage({ type: "success", text: `Report ${result.report.id} marked ${status.toLowerCase()}.` });
     return true;
   }
 
@@ -204,7 +206,7 @@ export default function Home() {
           {filteredReports.length > pageSize && <button className="show-more" onClick={() => setShowAll((current) => !current)}>{showAll ? "Show fewer" : `Show all ${filteredReports.length} reports`}</button>}
         </>}
       </section>
-      <footer><span>maintainai</span> · AI-assisted maintenance triage · v1.1 <span>{health && health !== "offline" && health.storage === "temporary" ? "Reports are temporary on this deployment. Connect Upstash Redis to keep them." : health && health !== "offline" && health.storage === "redis" ? "Reports are stored in Redis." : "Logs are stored locally for this demo."}</span></footer>
+      <footer><span>maintainai</span> · AI-assisted maintenance triage · v1.1 <span>Reports are saved in this browser only</span></footer>
     </main>
   );
 }

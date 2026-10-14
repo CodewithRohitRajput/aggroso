@@ -22,10 +22,9 @@ The Gemini key is read only by the server-side API routes, sent in the `x-goog-a
 
 1. Push this folder to a GitHub repository and import it in Vercel. No build settings need to change; Vercel detects Next.js.
 2. In **Settings → Environment Variables**, add `GEMINI_API_KEY` (and optionally `GEMINI_MODEL`).
-3. In **Storage**, add **Upstash for Redis** from the Marketplace and connect it to the project. This sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
-4. Redeploy.
+3. Redeploy.
 
-Vercel's filesystem is read-only and short-lived, so without Redis the app still works but reports are written to `/tmp` and disappear when the function restarts. The footer shows which storage is active.
+There is no database. Reports and reviews are saved in the browser's localStorage, so each browser keeps its own reports and clearing site data removes them.
 
 ## Workflow
 
@@ -34,7 +33,7 @@ Vercel's filesystem is read-only and short-lived, so without Redis the app still
 3. A reviewer records their name and an optional note, then approves, assigns, or rejects (a reason is required to reject).
 4. Approved or assigned work is marked resolved when complete. Every change is written to the report's audit trail.
 
-Allowed status transitions are enforced by the server:
+Allowed status transitions:
 
 | From | To |
 | --- | --- |
@@ -46,26 +45,23 @@ Allowed status transitions are enforced by the server:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| GET | `/api/health` | Status, active AI provider, and storage type |
-| GET | `/api/triage` | List reports, newest first |
-| GET | `/api/triage/:id` | Fetch one report |
-| POST | `/api/triage` | Create a report and run triage (400 with field errors on invalid input) |
-| PATCH | `/api/triage/:id` | Body `{ status, reviewer, note? }`; 409 on an invalid transition |
+| GET | `/api/health` | Status and active AI provider |
+| POST | `/api/triage` | Run triage and return a pending report (400 with field errors on invalid input). Nothing is stored on the server. |
 
 ## Architecture
 
 - `app/page.tsx`: the frontend.
 - `app/api/**/route.ts`: Next.js route handlers for the API.
-- `lib/handlers.ts`: request parsing, Zod validation, and JSON error responses shared by the routes.
+- `lib/handlers.ts`: request parsing, Zod validation, and JSON error responses.
 - `lib/gemini.ts`: Gemini REST integration, strict JSON validation, safety floor enforcement, 20 s timeout, and automatic fallback to the local engine.
 - `lib/triage.ts`: deterministic fallback triage engine.
-- `lib/store.ts`: persistence. Uses Upstash Redis when `KV_REST_API_URL`/`KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`) are set; otherwise a JSON file at `data/triage-reports.json` (override with `DATA_FILE`) with serialized, atomic writes. The newest 200 reports are kept.
+- `lib/reports.ts`: review transitions and audit trail, plus localStorage persistence (newest 200 reports).
 
 Gemini output is constrained to severity, confidence, probable cause, recommended actions, safety notes, and estimated downtime. The backend always adds a pending human-review status and enforces a minimum severity based on obvious hazard signals.
 
 ## Validate
 
-16 tests cover the triage engine, Gemini parsing/safety floor/fallback (with a mocked `fetch`), and the API route lifecycle against a temporary data file.
+18 tests cover the triage engine, Gemini parsing/safety floor/fallback (with a mocked `fetch`), the triage API routes, and the review workflow.
 
 ```powershell
 cd C:\Users\rohit\Desktop\aggroso
@@ -75,4 +71,4 @@ npm run build
 
 ## Deliberate limitations
 
-This demo has no authentication (reviewer names are self-reported), CMMS integration, image analysis, or notifications. Concurrent reviews of the same report on Redis are last-write-wins. Add authentication before production use.
+This demo has no authentication (reviewer names are self-reported), shared storage (reports live in each browser), CMMS integration, image analysis, or notifications. Add a database and authentication before production use.
